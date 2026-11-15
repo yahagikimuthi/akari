@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.30)
 
-project(akr CXX)
+project(akr
+    LANGUAGES CXX
+    VERSION 1.0.0
+)
 
 set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
