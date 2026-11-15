@@ -4,13 +4,8 @@ project(akr CXX)
 
 set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF) # GNU拡張を無効化（標準準拠）
+set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
-find_package(Vulkan REQUIRED)
-find_package(glfw3 REQUIRED)
-find_program(GLSLC_EXECUTABLE glslc)
-find_package(glm REQUIRED)
 
 add_library(akr INTERFACE)
 add_library(akr::akr ALIAS akr)
@@ -18,23 +13,6 @@ add_library(akr::akr ALIAS akr)
 target_include_directories(akr INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 )
-
-include(FetchContent)
-
-FetchContent_Declare(
-    hgn
-    GIT_REPOSITORY https://github.com/yahagikimuthi/hgn.git
-    GIT_TAG main
-)
-FetchContent_MakeAvailable(hgn)
-
-target_link_libraries(akr INTERFACE
-    Vulkan::Vulkan
-    glfw
-    glm::glm
-    hgn::hgn
-)
-
 
 if(PROJECT_IS_TOP_LEVEL)
     add_library(project_warnings INTERFACE)
