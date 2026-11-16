@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -52,20 +53,25 @@ struct heap_error_code final {
 };
 
 template <std::size_t N>
+    requires(N > 0)
 class stack_error_impl final {
     friend class heap_error_impl;
 
   public:
-    stack_error_impl(const error_category category, const std::string_view msg) noexcept {
-        codes_.try_emplace_back(category, std::string_view{msg});
+    stack_error_impl(const error_category category, const std::string_view msg) noexcept
+        requires(N == 1)
+    {
+        codes_.unchecked_emplace_back(category, msg);
     }
 
     template <std::size_t M>
     stack_error_impl(
         const error_category category, const std::string_view msg, const stack_error_impl<M>& parent
-    ) noexcept {
-        codes_.try_emplace_back(category, std::string_view{msg});
-        codes_.try_append_range(parent.codes_);
+    ) noexcept
+        requires(M < N)
+    {
+        codes_.unchecked_emplace_back(category, msg);
+        assert(codes_.try_append_range(parent.codes_));
     }
 
     [[nodiscard]] auto what() const noexcept -> std::string {

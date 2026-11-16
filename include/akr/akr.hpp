@@ -132,17 +132,16 @@ template <std::size_t N>
     return std::unexpected<error>{std::in_place, category, msg, parent};
 }
 
-template <std::size_t N, std::size_t M = N>
-[[nodiscard]] auto make_stack_error(
+[[nodiscard]] inline auto make_stack_error(
     const error_category category, const std::string_view msg
-) noexcept -> std::unexpected<stack_error<M>> {
-    return std::unexpected<stack_error<M>>{std::in_place, category, msg};
+) noexcept -> std::unexpected<stack_error<1>> {
+    return std::unexpected<stack_error<1>>{std::in_place, category, msg};
 }
 
-template <std::size_t N, std::size_t M = N>
+template <std::size_t N, std::size_t M>
 [[nodiscard]] auto make_stack_error(
-    const error_category category, const std::string_view msg, const stack_error<N>& parent
-) noexcept -> std::unexpected<stack_error<M>> {
-    return std::unexpected<stack_error<M>>{std::in_place, category, msg, parent};
+    const error_category category, const std::string_view msg, const stack_error<M>& parent
+) noexcept -> std::unexpected<stack_error<N>> {
+    return std::unexpected<stack_error<N>>{std::in_place, category, msg, parent};
 }
 }  // namespace akr
