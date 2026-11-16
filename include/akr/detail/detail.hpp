@@ -53,25 +53,31 @@ struct heap_error_code final {
 };
 
 template <std::size_t N>
-    requires(N > 0)
 class stack_error_impl final {
     friend class heap_error_impl;
 
   public:
+    static_assert(N > 0);
+
     stack_error_impl(const error_category category, const std::string_view msg) noexcept
         requires(N == 1)
     {
         codes_.unchecked_emplace_back(category, msg);
     }
 
-    template <std::size_t M>
     stack_error_impl(
-        const error_category category, const std::string_view msg, const stack_error_impl<M>& parent
-    ) noexcept
-        requires(M < N)
-    {
+        const error_category           category,
+        const std::string_view         msg,
+        const stack_error_impl<N - 1>& parent
+    ) noexcept {
         codes_.unchecked_emplace_back(category, msg);
-        assert(codes_.try_append_range(parent.codes_));
+        codes_.append_range(parent.codes());
+    }
+
+    template <std::size_t M>
+        requires(M < N)
+    stack_error_impl(const stack_error_impl<M>& other) noexcept {
+        codes_.append_range(other.codes());
     }
 
     [[nodiscard]] auto what() const noexcept -> std::string {
@@ -95,6 +101,10 @@ class stack_error_impl final {
 
     [[nodiscard]] auto trace_count() const noexcept -> std::uint32_t {
         return static_cast<std::uint32_t>(codes_.size());
+    }
+
+    [[nodiscard]] auto codes() const noexcept -> const std::inplace_vector<stack_error_code, N>& {
+        return codes_;
     }
 
   private:
