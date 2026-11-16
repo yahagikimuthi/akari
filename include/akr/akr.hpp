@@ -42,14 +42,23 @@ class stack_error final {
     friend class error;
 
   public:
+    static_assert(N > 0);
+
     stack_error(const error_category category, const std::string_view msg) noexcept
+        requires(N == 1)
         : impl_{category, msg} {}
 
-    template <std::size_t M>
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
     stack_error(
-        const error_category category, const std::string_view msg, const stack_error<M>& parent
+        const error_category category, const std::string_view msg, const stack_error<N - 1>& parent
     ) noexcept
-        : impl_{category, msg, parent.impl_} {}
+        : impl_{category, msg, parent.impl()} {}
+
+    template <std::size_t M>
+        requires(M < N)
+    stack_error(const stack_error<M>& other) noexcept : impl_{other.impl()} {}
+#pragma GCC diagnostic pop
 
     stack_error(
         const error_category category, const std::string_view msg, const error& parent
@@ -72,6 +81,11 @@ class stack_error final {
     }
 
     [[nodiscard]] auto trace_count() const noexcept -> std::uint32_t { return impl_.trace_count(); }
+
+    __attribute__((__visibility__("hidden"))) [[nodiscard]] [[deprecated]] auto impl(
+    ) const noexcept -> const detail::stack_error_impl<N>& {
+        return impl_;
+    }
 
   private:
     detail::stack_error_impl<N> impl_;
@@ -135,13 +149,13 @@ template <std::size_t N>
 [[nodiscard]] inline auto make_stack_error(
     const error_category category, const std::string_view msg
 ) noexcept -> std::unexpected<stack_error<1>> {
-    return std::unexpected<stack_error<1>>{std::in_place, category, msg};
+    return std::unexpected{stack_error<1>{category, msg}};
 }
 
-template <std::size_t N, std::size_t M>
+template <std::size_t N>
 [[nodiscard]] auto make_stack_error(
-    const error_category category, const std::string_view msg, const stack_error<M>& parent
-) noexcept -> std::unexpected<stack_error<N>> {
-    return std::unexpected<stack_error<N>>{std::in_place, category, msg, parent};
+    const error_category category, const std::string_view msg, const stack_error<N>& parent
+) noexcept -> std::unexpected<stack_error<N + 1>> {
+    return std::unexpected<stack_error<N + 1>>{std::in_place, category, msg, parent};
 }
 }  // namespace akr
