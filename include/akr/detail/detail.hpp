@@ -1,10 +1,8 @@
 #pragma once
 
-#include <cassert>
-#include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <functional>
-#include <inplace_vector>
 #include <iostream>
 #include <ranges>
 #include <string>
@@ -13,8 +11,6 @@
 #include <vector>
 
 namespace akr::detail {
-enum class error_category : std::uint8_t { runtime, logic, unknown };
-
 class debugger final {
   public:
     template <typename... Args>
@@ -42,55 +38,28 @@ class debugger final {
     static inline constinit auto is_default_ = false;
 };
 
-struct stack_error_code final {
-    error_category   category;
-    std::string_view msg;
-};
+enum class error_category : std::uint8_t { runtime, logic };
 
-struct heap_error_code final {
+struct error_code final {
     error_category category;
     std::string    msg;
 };
 
-template <std::size_t N>
-class stack_error_impl final {
-    friend class heap_error_impl;
-
+class error_impl final {
   public:
-    static_assert(N > 0);
-
-    stack_error_impl(const error_category category, const std::string_view msg) noexcept
-        requires(N == 1)
-    {
-        codes_.unchecked_emplace_back(category, msg);
-    }
-
-    stack_error_impl(
-        const error_category           category,
-        const std::string_view         msg,
-        const stack_error_impl<N - 1>& parent
-    ) noexcept {
-        codes_.unchecked_emplace_back(category, msg);
-        codes_.append_range(parent.codes());
-    }
-
-    template <std::size_t M>
-        requires(M < N)
-    stack_error_impl(const stack_error_impl<M>& other) noexcept {
-        codes_.append_range(other.codes());
+    error_impl(const error_category category, const std::string_view msg) noexcept {
+        codes_.emplace_back(category, std::string{msg});
     }
 
     [[nodiscard]] auto what() const noexcept -> std::string {
         auto out = std::string{};
         for (const auto& [i, code] : std::views::enumerate(codes_)) {
-            if (i != 0) out += "->";
+            if (i != 0) out += "-> ";
 
             if (code.category == error_category::logic)
                 out += "[Logic Error]: ";
             else if (code.category == error_category::runtime)
                 out += "[Runtime Error]: ";
-            else if (code.category == error_category::unknown)
-                out += "[Unknown Error]: ";
 
             out += code.msg;
             out += '\n';
@@ -99,69 +68,21 @@ class stack_error_impl final {
         return out;
     }
 
-    [[nodiscard]] auto trace_count() const noexcept -> std::uint32_t {
-        return static_cast<std::uint32_t>(codes_.size());
+    [[noreturn]] void panic() const noexcept {
+        std::cerr << what();
+        std::terminate();
     }
 
-    [[nodiscard]] auto codes() const noexcept -> const std::inplace_vector<stack_error_code, N>& {
-        return codes_;
-    }
-
-  private:
-    std::inplace_vector<stack_error_code, N> codes_;
-};
-
-class heap_error_impl final {
-  public:
-    heap_error_impl(const error_category category, const std::string_view msg) noexcept {
-        codes_.emplace_back(category, std::string{msg});
-    }
-
-    heap_error_impl(
-        const error_category category, const std::string_view msg, const heap_error_impl& parent
-    ) noexcept {
-        codes_.reserve(1 + parent.codes_.size());
-        codes_.emplace_back(category, std::string{msg});
-        codes_.append_range(parent.codes_);
-    }
-
-    template <std::size_t N>
-    heap_error_impl(
-        const error_category category, const std::string_view msg, const stack_error_impl<N>& parent
-    ) noexcept {
-        codes_.reserve(1 + parent.trace_count());
-        codes_.emplace_back(category, std::string{msg});
-        codes_.append_range(
-            parent.codes_ |
-            std::views::transform([](const stack_error_code& code) noexcept -> heap_error_code {
-                return {.category = code.category, .msg = std::string{code.msg}};
-            })
-        );
-    }
-
-    [[nodiscard]] auto what() const noexcept -> std::string {
-        auto out = std::string{};
-        for (const auto& [i, code] : std::views::enumerate(codes_)) {
-            if (i != 0) out += "->";
-
-            if (code.category == error_category::logic)
-                out += "[Logic Error]: ";
-            else if (code.category == error_category::runtime)
-                out += "[Runtime Error]: ";
-            else if (code.category == error_category::unknown)
-                out += "[Unknown Error]: ";
-
-            out += code.msg + '\n';
-        }
-
-        return out;
-    }
-
-    [[nodiscard]] auto trace_count() const noexcept -> std::uint32_t {
-        return static_cast<std::uint32_t>(codes_.size());
+    [[nodiscard]] auto rethrow(const error_category category, const std::string_view msg)
+        const noexcept -> error_impl {
+        auto out = codes_;
+        out.emplace_back(category, std::string{msg});
+        return error_impl{std::move(out)};
     }
 
   private:
-    std::vector<heap_error_code> codes_;
+    explicit error_impl(std::vector<error_code>&& codes) noexcept : codes_{std::move(codes)} {}
+
+    std::vector<error_code> codes_;
 };
 }  // namespace akr::detail

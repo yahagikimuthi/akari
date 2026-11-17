@@ -1,11 +1,7 @@
 #pragma once
 
-#include <cstddef>
-#include <exception>
 #include <expected>
 #include <functional>
-#include <iostream>
-#include <ostream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -30,132 +26,47 @@ inline void notify(const std::string_view msg) noexcept {
     return false;
 }
 
-using detail::error_category;
-inline constexpr auto logic_error   = error_category::logic;
-inline constexpr auto runtime_error = error_category::runtime;
-inline constexpr auto unknown_error = error_category::unknown;
-
-class error;
-
-template <std::size_t N>
-class stack_error final {
-    friend class error;
-
-  public:
-    static_assert(N > 0);
-
-    stack_error(const error_category category, const std::string_view msg) noexcept
-        requires(N == 1)
-        : impl_{category, msg} {}
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-    stack_error(
-        const error_category category, const std::string_view msg, const stack_error<N - 1>& parent
-    ) noexcept
-        : impl_{category, msg, parent.impl()} {}
-
-    template <std::size_t M>
-        requires(M < N)
-    stack_error(const stack_error<M>& other) noexcept : impl_{other.impl()} {}
-#pragma GCC diagnostic pop
-
-    stack_error(
-        const error_category category, const std::string_view msg, const error& parent
-    ) noexcept = delete;
-
-    [[nodiscard]] auto what() const noexcept -> std::string { return impl_.what(); }
-
-    template <typename E, typename T>
-    friend auto operator<<(std::basic_ostream<E, T>& os, const stack_error& self) noexcept
-        -> std::basic_ostream<E, T>& {
-        os << self.what();
-        return os;
-    }
-
-    void cerr() const noexcept { std::cerr << *this; }
-
-    [[noreturn]] void panic() const noexcept {
-        cerr();
-        std::terminate();
-    }
-
-    [[nodiscard]] auto trace_count() const noexcept -> std::uint32_t { return impl_.trace_count(); }
-
-    __attribute__((__visibility__("hidden"))) [[nodiscard]] [[deprecated]] auto impl(
-    ) const noexcept -> const detail::stack_error_impl<N>& {
-        return impl_;
-    }
-
-  private:
-    detail::stack_error_impl<N> impl_;
-};
-
 class error final {
+    friend auto throw_logic(const std::string_view msg) noexcept -> std::unexpected<error>;
+
+    friend auto throw_runtime(const std::string_view msg) noexcept -> std::unexpected<error>;
+
   public:
-    error(const error_category category, const std::string_view msg) noexcept
-        : impl_{category, msg} {}
-
-    error(const error_category category, const std::string_view msg, const error& parent) noexcept
-        : impl_{category, msg, parent.impl_} {}
-
-    template <std::size_t N>
-    error(
-        const error_category category, const std::string_view msg, const stack_error<N>& parent
-    ) noexcept
-        : impl_{category, msg, parent.impl_} {}
-
     [[nodiscard]] auto what() const noexcept -> std::string { return impl_.what(); }
 
-    template <typename E, typename T>
-    friend auto operator<<(std::basic_ostream<E, T>& os, const error& self) noexcept
-        -> std::basic_ostream<E, T>& {
-        os << self.what();
-        return os;
+    [[noreturn]] void panic() const noexcept { impl_.panic(); }
+
+    [[nodiscard]] auto rethrow_logic(const std::string_view msg
+    ) const noexcept -> std::unexpected<error> {
+        return rethrow(detail::error_category::logic, msg);
     }
 
-    void cerr() const noexcept { std::cerr << *this; }
-
-    [[noreturn]] void panic() const noexcept {
-        cerr();
-        std::terminate();
+    [[nodiscard]] auto rethrow_runtime(const std::string_view msg
+    ) const noexcept -> std::unexpected<error> {
+        return rethrow(detail::error_category::runtime, msg);
     }
-
-    [[nodiscard]] auto trace_count() const noexcept -> std::uint32_t { return impl_.trace_count(); }
 
   private:
-    detail::heap_error_impl impl_;
+    error(const detail::error_category category, const std::string_view msg) noexcept
+        : impl_{category, msg} {}
+
+    error(detail::error_impl&& impl) noexcept : impl_{std::move(impl)} {}
+
+    [[nodiscard]] auto rethrow(const detail::error_category category, const std::string_view msg)
+        const noexcept -> std::unexpected<error> {
+        return std::unexpected{error{impl_.rethrow(category, msg)}};
+    }
+
+    detail::error_impl impl_;
 };
 
-[[nodiscard]] inline auto make_error(
-    const error_category category, const std::string_view msg
+[[nodiscard]] inline auto throw_logic(const std::string_view msg
 ) noexcept -> std::unexpected<error> {
-    return std::unexpected<error>{std::in_place, category, msg};
+    return std::unexpected{error{detail::error_category::logic, msg}};
 }
 
-[[nodiscard]] inline auto make_error(
-    const error_category category, const std::string_view msg, const error& parent
+[[nodiscard]] inline auto throw_runtime(const std::string_view msg
 ) noexcept -> std::unexpected<error> {
-    return std::unexpected<error>{std::in_place, category, msg, parent};
-}
-
-template <std::size_t N>
-[[nodiscard]] auto make_error(
-    const error_category category, const std::string_view msg, const stack_error<N>& parent
-) noexcept -> std::unexpected<error> {
-    return std::unexpected<error>{std::in_place, category, msg, parent};
-}
-
-[[nodiscard]] inline auto make_stack_error(
-    const error_category category, const std::string_view msg
-) noexcept -> std::unexpected<stack_error<1>> {
-    return std::unexpected{stack_error<1>{category, msg}};
-}
-
-template <std::size_t N>
-[[nodiscard]] auto make_stack_error(
-    const error_category category, const std::string_view msg, const stack_error<N>& parent
-) noexcept -> std::unexpected<stack_error<N + 1>> {
-    return std::unexpected<stack_error<N + 1>>{std::in_place, category, msg, parent};
+    return std::unexpected{error{detail::error_category::runtime, msg}};
 }
 }  // namespace akr
